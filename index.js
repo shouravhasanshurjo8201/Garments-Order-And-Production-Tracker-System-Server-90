@@ -1,35 +1,73 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
-app.use(cors());
+const port = process.env.PORT || 3000;
+
+// Middleware
 app.use(express.json());
+
+// MongoDB URI
+const uri = `mongodb+srv://${process.env.User_Name}:${process.env.MongoPassword}@cluster0.nivae1g.mongodb.net/?appName=Cluster0`;
+
+const client = new MongoClient(uri, {
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
+});
 
 // Root route
 app.get('/', (req, res) => {
     res.send('Server is Running');
 });
 
+// Async function to run MongoDB operations
 async function run() {
     try {
-     
+        // Connect to MongoDB
+        await client.connect(); 
+        const db = client.db("GarmentsProductionDB");
+        const productsCollection = db.collection("AllProducts");
+        console.log("MongoDB connected successfully!");
+
         // GET All Products
-        app.get('/Products', async (req, res) => {
-           
-        
+        app.get('/products', async (req, res) => {
+            try {
+                const products = await productsCollection.find().toArray();
+                res.status(200).json(products);
+            } catch (err) {
+                res.status(500).json({ message: 'Failed to fetch products', error: err.message });
+            }
         });
 
         // GET Product by ID
-        app.get('/Products/id/:id', async (req, res) => {
-          
+        app.get('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            try {
+                const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+                if (!product) {
+                    return res.status(404).json({ message: 'Product not found' });
+                }
+                res.status(200).json(product);
+            } catch (err) {
+                res.status(500).json({ message: 'Failed to fetch product', error: err.message });
+            }
         });
 
-    } catch (error) {
-        console.error(error);
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
     }
 }
 
-run();
+run().catch(console.dir);
+
+// Start server
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
 
 module.exports = app;
