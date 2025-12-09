@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: process.env.Origin1,
     credentials: true
 }));
 app.use(express.json());
@@ -36,7 +36,60 @@ async function run() {
         await client.connect();
         const db = client.db("GarmentsProductionDB");
         const productsCollection = db.collection("AllProducts");
+        const usersCollection = db.collection("users");
         console.log("MongoDB connected successfully!");
+
+        
+
+        // Save  User
+        app.post('/user', async (req, res) => {
+            try {
+                const userData = req.body;
+                if (!userData || !userData.email) {
+                    return res.status(400).json({ message: "User email is required" });
+                }
+
+                userData.created_at = new Date().toISOString();
+                userData.last_loggedIn = new Date().toISOString();
+                const query = { email: userData.email };
+                const alreadyExists = await usersCollection.findOne(query);
+
+                // If user exists
+                if (alreadyExists) {
+                    const updateDoc = {
+                        $set: {
+                            last_loggedIn: new Date().toISOString(),
+                            name: userData.name || alreadyExists.name,
+                            role: userData.role || alreadyExists.role,
+                            photoURL: userData.photoURL || alreadyExists.photoURL,
+                        }
+                    };
+
+                    const result = await usersCollection.updateOne(query, updateDoc);
+                    return res.status(200).json({
+                        message: "User updated successfully",
+                        updated: true,
+                        result
+                    });
+                }
+
+                const result = await usersCollection.insertOne(userData);
+                return res.status(201).json({
+                    message: "User created successfully",
+                    created: true,
+                    userId: result.insertedId
+                });
+
+            } catch (error) {
+                console.error("User Save Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
+
+
 
         // Post Products
         app.post('/products', async (req, res) => {
