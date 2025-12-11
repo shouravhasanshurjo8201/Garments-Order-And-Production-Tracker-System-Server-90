@@ -33,13 +33,11 @@ app.get('/', (req, res) => {
 async function run() {
     try {
         // Connect MongoDB
-        await client.connect();
         const db = client.db("GarmentsProductionDB");
         const productsCollection = db.collection("AllProducts");
         const usersCollection = db.collection("users");
+        const ordersCollection = db.collection("Orders");
         console.log("MongoDB connected successfully!");
-
-
 
         // Save  User
         app.post('/user', async (req, res) => {
@@ -93,7 +91,7 @@ async function run() {
         app.get('/user', async (req, res) => {
             try {
                 const email = req.query.email;
-                
+
                 if (!email) {
                     return res.status(400).json({ message: "Email query is required" });
                 }
@@ -111,7 +109,6 @@ async function run() {
                 });
             }
         });
-
 
         // Post Products
         app.post('/products', async (req, res) => {
@@ -165,6 +162,54 @@ async function run() {
                 res.status(200).json(product);
             } catch (err) {
                 res.status(500).json({ message: 'Failed to fetch product', error: err.message });
+            }
+        });
+
+        // Post Orders
+        app.post('/orders', async (req, res) => {
+            const orderData = req.body;
+
+            if (!orderData || Object.keys(orderData).length === 0) {
+                return res.status(400).json({ message: 'Orders data is required' });
+            }
+
+            try {
+                const productId = orderData.productId;
+                if (!productId) {
+                    return res.status(400).json({ message: "Product ID is required" });
+                }
+
+                // ১) Get product from DB
+                const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
+                if (!product) {
+                    return res.status(404).json({ message: "Product not found" });
+                }
+
+                // ২) Check stock
+                if (orderData.quantity > product.quantity) {
+                    return res.status(400).json({ message: "Cannot order more than available stock" });
+                }
+
+                // ৩) Insert order
+                orderData.createdAt = new Date().toISOString();
+                const result = await ordersCollection.insertOne(orderData);
+
+                // ৪) Update product quantity
+                const newQuantity = product.quantity - Number(orderData.quantity);
+                await productsCollection.updateOne(
+                    { _id: new ObjectId(productId) },
+                    { $set: { quantity: newQuantity } }
+                );
+
+                res.status(201).json({
+                    message: "Order placed successfully",
+                    orderId: result.insertedId,
+                    updatedProductQuantity: newQuantity
+                });
+
+            } catch (err) {
+                console.error("Order creation failed:", err);
+                res.status(500).json({ message: "Failed to create order", error: err.message });
             }
         });
 
