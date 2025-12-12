@@ -88,15 +88,30 @@ async function run() {
         });
 
         // GET User  Get User
+        app.get('/users', async (req, res) => {
+            try {
+
+                const users = await usersCollection.find().toArray();
+                if (!users) {
+                    return res.status(404).json({ message: "Users not found" });
+                }
+                return res.status(200).json(users);
+            } catch (error) {
+                console.error("Get Users Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
+        // GET User  Get User
         app.get('/user', async (req, res) => {
             try {
                 const email = req.query.email;
-
                 if (!email) {
                     return res.status(400).json({ message: "Email query is required" });
                 }
-
-                const user = await usersCollection.find().toArray();
+                const user = await usersCollection.findOne({ email: email })
                 if (!user) {
                     return res.status(404).json({ message: "User not found" });
                 }
@@ -107,6 +122,27 @@ async function run() {
                     message: "Internal Server Error",
                     error: error.message
                 });
+            }
+        });
+        // Update User
+        app.patch('/user', async (req, res) => {
+            try {
+                const { email, name, photoURL } = req.body;
+                const result = await usersCollection.updateOne(
+                    { email: email },
+                    {
+                        $set: {
+                            name,
+                            photoURL
+                        }
+                    }
+                );
+
+                return res.status(200).json({ message: "User updated successfully",result });
+
+            } catch (error) {
+                console.error("User Update Error:", error);
+                return res.status(500).json({ message: "Error updating user",error: error.message });
             }
         });
 
