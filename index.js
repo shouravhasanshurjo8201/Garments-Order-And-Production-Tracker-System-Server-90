@@ -138,11 +138,11 @@ async function run() {
                     }
                 );
 
-                return res.status(200).json({ message: "User updated successfully",result });
+                return res.status(200).json({ message: "User updated successfully", result });
 
             } catch (error) {
                 console.error("User Update Error:", error);
-                return res.status(500).json({ message: "Error updating user",error: error.message });
+                return res.status(500).json({ message: "Error updating user", error: error.message });
             }
         });
 
@@ -248,6 +248,33 @@ async function run() {
                 res.status(500).json({ message: "Failed to create order", error: err.message });
             }
         });
+
+        // GET All Orders (Admin)
+        app.get('/orders', async (req, res) => {
+            try {
+                const orders = await ordersCollection.find().toArray();
+
+                if (!orders || orders.length === 0) {
+                    return res.status(404).json({
+                        message: "No orders found"
+                    });
+                }
+
+                res.status(200).json(orders);
+
+            } catch (error) {
+                console.error("Get All Orders Error:", error);
+                res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
+
+     
+
+
+
 
     } catch (err) {
         console.error('MongoDB connection error:', err);
