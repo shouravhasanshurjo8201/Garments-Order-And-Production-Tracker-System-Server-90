@@ -271,7 +271,81 @@ async function run() {
             }
         });
 
-     
+        // GET Orders by User 
+        app.get('/order', async (req, res) => {
+            try {
+                const email = req.query.email;
+
+                if (!email) {
+                    return res.status(400).json({
+                        message: "Email query is required"
+                    });
+                }
+
+                const orders = await ordersCollection
+                    .find({ email: email })
+                    .toArray();
+
+                return res.status(200).json(orders);
+
+            } catch (error) {
+                console.error("Get Orders by Email Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
+        app.get('/order/:id', async (req, res) => {
+            try {
+                const orderId = req.params.id;
+
+                if (!orderId) {
+                    return res.status(400).json({ message: "Order ID is required" });
+                }
+
+                const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
+
+                if (!order) {
+                    return res.status(404).json({ message: "Order not found" });
+                }
+
+                return res.status(200).json(order);
+
+            } catch (error) {
+                console.error("Get Order by ID Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
+        
+        // Delete Order by ID
+        app.delete('/order/:id', async (req, res) => {
+            try {
+                const orderId = req.params.id;
+
+                if (!orderId) {
+                    return res.status(400).json({ message: "Order ID is required" });
+                }
+
+                const result = await ordersCollection.deleteOne({ _id: new ObjectId(orderId) });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ message: "Order not found or already deleted" });
+                }
+
+                return res.status(200).json({ message: "Order deleted successfully" });
+
+            } catch (error) {
+                console.error("Delete Order Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
+            }
+        });
 
 
 
