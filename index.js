@@ -400,53 +400,41 @@ async function run() {
             }
         });
 
-        // GET All Orders (Admin)
-        app.get('/orders', async (req, res) => {
-            try {
-                const orders = await ordersCollection.find().toArray();
+     
 
-                if (!orders || orders.length === 0) {
-                    return res.status(404).json({
-                        message: "No orders found"
-                    });
+        // GET Orders status, email
+        app.get("/orders", async (req, res) => {
+            try {
+                const { status, email } = req.query;
+
+                const query = {};
+
+                // Filter by status
+                if (status) {
+                    query.status = status;
                 }
+
+                // Filter by user email 
+                if (email) {
+                    query.email = email;
+                }
+
+                const orders = await ordersCollection
+                    .find(query)
+                    .sort({ createdAt: -1 })
+                    .toArray();
 
                 res.status(200).json(orders);
 
             } catch (error) {
-                console.error("Get All Orders Error:", error);
+                console.error("Get Orders Error:", error);
                 res.status(500).json({
-                    message: "Internal Server Error",
+                    message: "Failed to load orders",
                     error: error.message
                 });
             }
         });
 
-        // GET Orders by User 
-        app.get('/order', async (req, res) => {
-            try {
-                const email = req.query.email;
-
-                if (!email) {
-                    return res.status(400).json({
-                        message: "Email query is required"
-                    });
-                }
-
-                const orders = await ordersCollection
-                    .find({ email: email })
-                    .toArray();
-
-                return res.status(200).json(orders);
-
-            } catch (error) {
-                console.error("Get Orders by Email Error:", error);
-                return res.status(500).json({
-                    message: "Internal Server Error",
-                    error: error.message
-                });
-            }
-        });
         app.get('/order/:id', async (req, res) => {
             try {
                 const orderId = req.params.id;
@@ -496,6 +484,64 @@ async function run() {
                 });
             }
         });
+
+        // UPDATE Order Status
+        app.patch("/orders/:id", async (req, res) => {
+            const { id } = req.params;
+            const { status, tracking } = req.body;
+
+            if (!status && !tracking) {
+                return res.status(400).json({
+                    message: "Status or Tracking data is required"
+                });
+            }
+
+            try {
+                const updateDoc = {};
+
+                //  Status update
+                if (status) {
+                    updateDoc.$set = {
+                        status
+                    };
+
+                    if (status === "Approved") {
+                        updateDoc.$set.approvedAt = new Date();
+                    }
+                }
+
+                //  Tracking update
+                if (tracking) {
+                    updateDoc.$push = {
+                        trackingHistory: {
+                            ...tracking,
+                            time: new Date()
+                        }
+                    };
+                }
+
+                const result = await ordersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    updateDoc
+                );
+
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ message: "Order not found" });
+                }
+
+                res.json({
+                    success: true,
+                    message: "Order updated successfully"
+                });
+
+            } catch (error) {
+                res.status(500).json({
+                    message: "Failed to update order",
+                    error: error.message
+                });
+            }
+        });
+
 
 
 
