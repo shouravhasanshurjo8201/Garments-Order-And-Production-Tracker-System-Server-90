@@ -166,52 +166,64 @@ async function run() {
         });
 
         app.patch('/user/update/:id', async (req, res) => {
-                const id = req.params.id
-                const { role, status, suspendReason, suspendFeedback } = req.body
+            const id = req.params.id
+            const { role, status, suspendReason, suspendFeedback } = req.body
 
-                const updateDoc = {
-                    $set: {
-                        role,
-                        status,
-                        updatedAt: new Date(),
-                    },
-                }
-
-                // If suspended → save reason & feedback
-                if (status === 'suspended') {
-                    updateDoc.$set.suspendReason = suspendReason
-                    updateDoc.$set.suspendFeedback = suspendFeedback
-                }
-
-                const result = await usersCollection.updateOne(
-                    { _id: new ObjectId(id) },
-                    updateDoc
-                )
-
-                res.send({
-                    success: true,
-                    modifiedCount: result.modifiedCount,
-                })
+            const updateDoc = {
+                $set: {
+                    role,
+                    status,
+                    updatedAt: new Date(),
+                },
             }
+
+            // If suspended → save reason & feedback
+            if (status === 'suspended') {
+                updateDoc.$set.suspendReason = suspendReason
+                updateDoc.$set.suspendFeedback = suspendFeedback
+            }
+
+            const result = await usersCollection.updateOne(
+                { _id: new ObjectId(id) },
+                updateDoc
+            )
+
+            res.send({
+                success: true,
+                modifiedCount: result.modifiedCount,
+            })
+        }
         )
 
         // Post Products
         app.post('/products', async (req, res) => {
             const newProduct = req.body;
+
             if (!newProduct || Object.keys(newProduct).length === 0) {
                 return res.status(400).json({ message: 'Product data is required' });
             }
 
             try {
-                const result = await productsCollection.insertOne(newProduct);
+                const product = {
+                    ...newProduct,
+                    showOnHome: newProduct.showOnHome || false,
+                    createdAt: new Date()
+                };
+
+                const result = await productsCollection.insertOne(product);
+
                 res.status(201).json({
                     message: 'Product added successfully',
                     productId: result.insertedId
                 });
             } catch (err) {
-                res.status(500).json({ message: 'Failed to add product', error: err.message });
+                res.status(500).json({
+                    message: 'Failed to add product',
+                    error: err.message
+                });
             }
         });
+
 
         // GET All Products
         app.get('/products', async (req, res) => {
@@ -219,18 +231,26 @@ async function run() {
                 const products = await productsCollection.find().toArray();
                 res.status(200).json(products);
             } catch (err) {
-                res.status(500).json({ message: 'Failed to fetch products', error: err.message });
+                res.status(500).json({
+                    message: 'Failed to fetch products',
+                    error: err.message
+                });
             }
         });
 
         // GET Latest 8 Products
         app.get('/latest-products', async (req, res) => {
             try {
-                const products = await productsCollection.find().sort({ _id: -1 }).limit(8).toArray();
-                res.status(200).json(products);
+                const products = await productsCollection
+                    .find({ showOnHome: true })
+                    .sort({ createdAt: -1 })
+                    .limit(8)
+                    .toArray();
+
+                res.send(products);
             } catch (err) {
                 res.status(500).json({
-                    message: 'Failed to fetch latest products',
+                    message: 'Failed to fetch home products',
                     error: err.message
                 });
             }
@@ -239,16 +259,98 @@ async function run() {
         // GET Product by ID
         app.get('/products/:id', async (req, res) => {
             const id = req.params.id;
+
             try {
                 const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+
                 if (!product) {
                     return res.status(404).json({ message: 'Product not found' });
                 }
+
                 res.status(200).json(product);
             } catch (err) {
-                res.status(500).json({ message: 'Failed to fetch product', error: err.message });
+                res.status(500).json({
+                    message: 'Failed to fetch product',
+                    error: err.message
+                });
             }
         });
+
+        app.patch('/product/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+
+            try {
+                const result = await productsCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            ...updatedData,
+                            updatedAt: new Date()
+                        }
+                    }
+                );
+
+                res.send({
+                    success: true,
+                    modifiedCount: result.modifiedCount
+                });
+            } catch (err) {
+                res.status(500).json({
+                    message: 'Failed to update product',
+                    error: err.message
+                });
+            }
+        });
+
+        app.delete('/product/:id', async (req, res) => {
+            const id = req.params.id;
+
+            try {
+                const result = await productsCollection.deleteOne({
+                    _id: new ObjectId(id)
+                });
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ message: 'Product not found' });
+                }
+
+                res.send({
+                    success: true,
+                    message: 'Product deleted successfully'
+                });
+            } catch (err) {
+                res.status(500).json({
+                    message: 'Failed to delete product',
+                    error: err.message
+                });
+            }
+        });
+
+        app.patch('/products/show-home/:id', async (req, res) => {
+            const id = req.params.id;
+            const { showOnHome } = req.body;
+
+            try {
+                const result = await productsCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { showOnHome } }
+                );
+
+                res.send({
+                    success: true,
+                    modifiedCount: result.modifiedCount
+                });
+            } catch (err) {
+                res.status(500).json({
+                    message: 'Failed to update showOnHome',
+                    error: err.message
+                });
+            }
+        });
+
+
+
 
         // Post Orders
         app.post('/orders', async (req, res) => {
