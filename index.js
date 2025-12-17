@@ -86,7 +86,6 @@ async function run() {
                 });
             }
         });
-
         // GET User  Get User
         app.get('/users', async (req, res) => {
             try {
@@ -124,27 +123,77 @@ async function run() {
                 });
             }
         });
-        // Update User
-        app.patch('/user', async (req, res) => {
+        // GET User Check Admin
+        app.get('/user/admin', async (req, res) => {
             try {
-                const { email, name, photoURL } = req.body;
-                const result = await usersCollection.updateOne(
-                    { email: email },
-                    {
-                        $set: {
-                            name,
-                            photoURL
-                        }
-                    }
-                );
-
-                return res.status(200).json({ message: "User updated successfully", result });
-
+                const email = req.query.email;
+                if (!email) {
+                    return res.status(400).json({ message: "Email query is required" });
+                }
+                const user = await usersCollection.findOne({ email: email })
+                if (!user) {
+                    return res.status(404).json({ message: "User not found" });
+                }
+                return res.send({ admin: user?.role === 'Admin' })
             } catch (error) {
-                console.error("User Update Error:", error);
-                return res.status(500).json({ message: "Error updating user", error: error.message });
+                console.error("Get User Error:", error);
+                return res.status(500).json({
+                    message: "Internal Server Error",
+                    error: error.message
+                });
             }
         });
+        // GET Suspended status
+        app.get('/user/suspended', async (req, res) => {
+            try {
+                const email = req.query.email;
+                if (!email) return res.status(400).json({ message: "Email query is required" });
+
+                const user = await usersCollection.findOne({ email });
+                if (!user) return res.status(404).json({ message: "User not found" });
+
+                // Always return JSON with suspended: true/false
+                return res.status(200).json({
+                    suspended: user.status === 'Suspended',
+                    reason: user.suspendReason || "",
+                    feedback: user.suspendFeedback || ""
+                });
+
+            } catch (error) {
+                console.error("Get Suspended Error:", error);
+                return res.status(500).json({ message: "Internal Server Error", error: error.message });
+            }
+        });
+
+        app.patch('/user/update/:id', async (req, res) => {
+                const id = req.params.id
+                const { role, status, suspendReason, suspendFeedback } = req.body
+
+                const updateDoc = {
+                    $set: {
+                        role,
+                        status,
+                        updatedAt: new Date(),
+                    },
+                }
+
+                // If suspended → save reason & feedback
+                if (status === 'suspended') {
+                    updateDoc.$set.suspendReason = suspendReason
+                    updateDoc.$set.suspendFeedback = suspendFeedback
+                }
+
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    updateDoc
+                )
+
+                res.send({
+                    success: true,
+                    modifiedCount: result.modifiedCount,
+                })
+            }
+        )
 
         // Post Products
         app.post('/products', async (req, res) => {
@@ -320,7 +369,6 @@ async function run() {
                 });
             }
         });
-        
         // Delete Order by ID
         app.delete('/order/:id', async (req, res) => {
             try {
