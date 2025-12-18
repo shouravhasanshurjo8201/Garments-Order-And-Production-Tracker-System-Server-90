@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
@@ -8,10 +10,51 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-    origin: process.env.Origin1,
+    origin: process.env.Origin,
     credentials: true
 }));
+
 app.use(express.json());
+app.use(cookieParser());
+app.post('/jwt', (req, res) => {
+    const user = req.body;
+    if (!user?.email) {
+        return res.status(400).send({ message: 'Email required' });
+    }
+    const token = jwt.sign(user, process.env.JWT_SECRET, {
+        expiresIn: '7d',
+    });
+    res
+        .cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        })
+        .send({ success: true });
+});
+
+app.post('/logout', (req, res) => {
+    res
+        .clearCookie('token', {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+        })
+        .send({ success: true });
+});
+
+//  VERIFY JWT
+const verifyJWT = (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) return res.status(401).send({ message: 'Unauthorized' });
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(401).send({ message: 'Unauthorized' });
+        req.user = decoded;
+        next();
+    });
+};
+
 
 // MongoDB URI
 const uri = `mongodb+srv://${process.env.User_Name}:${process.env.MongoPassword}@cluster0.nivae1g.mongodb.net/?appName=Cluster0`;
@@ -40,7 +83,7 @@ async function run() {
         console.log("MongoDB connected successfully!");
 
         // Save  User
-        app.post('/user', async (req, res) => {
+        app.post('/user', verifyJWT, async (req, res) => {
             try {
                 const userData = req.body;
                 if (!userData || !userData.email) {
@@ -86,6 +129,7 @@ async function run() {
                 });
             }
         });
+
         // GET User  Get User
         app.get('/users', async (req, res) => {
             try {
@@ -103,6 +147,7 @@ async function run() {
                 });
             }
         });
+
         // GET User  Get User
         app.get('/user', async (req, res) => {
             try {
@@ -123,6 +168,7 @@ async function run() {
                 });
             }
         });
+
         // GET User Check Admin
         app.get('/user/admin', async (req, res) => {
             try {
@@ -143,6 +189,7 @@ async function run() {
                 });
             }
         });
+
         // GET Suspended status
         app.get('/user/suspended', async (req, res) => {
             try {
@@ -224,7 +271,6 @@ async function run() {
             }
         });
 
-
         // GET All Products
         app.get('/products', async (req, res) => {
             try {
@@ -257,7 +303,7 @@ async function run() {
         });
 
         // GET Product by ID
-        app.get('/products/:id', async (req, res) => {
+        app.get('/products/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -276,7 +322,7 @@ async function run() {
             }
         });
 
-        app.patch('/product/:id', async (req, res) => {
+        app.patch('/product/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
 
@@ -303,7 +349,7 @@ async function run() {
             }
         });
 
-        app.delete('/product/:id', async (req, res) => {
+        app.delete('/product/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -327,7 +373,7 @@ async function run() {
             }
         });
 
-        app.patch('/products/show-home/:id', async (req, res) => {
+        app.patch('/products/show-home/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
             const { showOnHome } = req.body;
 
@@ -349,11 +395,8 @@ async function run() {
             }
         });
 
-
-
-
         // Post Orders
-        app.post('/orders', async (req, res) => {
+        app.post('/orders', verifyJWT, async (req, res) => {
             const orderData = req.body;
 
             if (!orderData || Object.keys(orderData).length === 0) {
@@ -400,10 +443,8 @@ async function run() {
             }
         });
 
-     
-
         // GET Orders status, email
-        app.get("/orders", async (req, res) => {
+        app.get("/orders", verifyJWT, async (req, res) => {
             try {
                 const { status, email } = req.query;
 
@@ -435,7 +476,7 @@ async function run() {
             }
         });
 
-        app.get('/order/:id', async (req, res) => {
+        app.get('/order/:id', verifyJWT, async (req, res) => {
             try {
                 const orderId = req.params.id;
 
@@ -459,8 +500,9 @@ async function run() {
                 });
             }
         });
+
         // Delete Order by ID
-        app.delete('/order/:id', async (req, res) => {
+        app.delete('/order/:id', verifyJWT, async (req, res) => {
             try {
                 const orderId = req.params.id;
 
@@ -486,7 +528,7 @@ async function run() {
         });
 
         // UPDATE Order Status
-        app.patch("/orders/:id", async (req, res) => {
+        app.patch("/orders/:id", verifyJWT, async (req, res) => {
             const { id } = req.params;
             const { status, tracking } = req.body;
 
@@ -541,10 +583,6 @@ async function run() {
                 });
             }
         });
-
-
-
-
 
     } catch (err) {
         console.error('MongoDB connection error:', err);
