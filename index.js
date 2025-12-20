@@ -7,49 +7,38 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
 const port = process.env.PORT || 3000;
-
+app.set('trust proxy', 1);
 // Middleware
 app.use(cors({
-    origin: process.env.Origin,
-    credentials: true
+    origin: [
+        'http://localhost:5173',
+        process.env.Origin
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 }));
 
 app.use(express.json());
 app.use(cookieParser());
-app.post('/jwt', (req, res) => {
-    const user = req.body;
-    if (!user?.email) {
-        return res.status(400).send({ message: 'Email required' });
-    }
-    const token = jwt.sign(user, process.env.JWT_SECRET, {
-        expiresIn: '7d',
-    });
-    res
-        .cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        })
-        .send({ success: true });
-});
 
-app.post('/logout', (req, res) => {
-    res
-        .clearCookie('token', {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'lax',
-        })
-        .send({ success: true });
-});
+
+
+
 
 //  VERIFY JWT
 const verifyJWT = (req, res, next) => {
     const token = req.cookies?.token;
-    if (!token) return res.status(401).send({ message: 'Unauthorized' });
+
+    if (!token) {
+        console.log("Token not found in cookies");
+        return res.status(401).send({ message: 'Unauthorized: No token provided' });
+    }
 
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) return res.status(401).send({ message: 'Unauthorized' });
+        if (err) {
+            console.log("JWT Verification Error:", err.message);
+            return res.status(403).send({ message: 'Forbidden: Invalid or Expired token' });
+        }
         req.user = decoded;
         next();
     });
@@ -83,51 +72,57 @@ async function run() {
         console.log("MongoDB connected successfully!");
 
         // Save  User
-        app.post('/user', verifyJWT, async (req, res) => {
+        app.post('/login-user', async (req, res) => {
             try {
                 const userData = req.body;
-                if (!userData || !userData.email) {
-                    return res.status(400).json({ message: "User email is required" });
+                if (!userData?.email) {
+                    return res.status(400).send({ message: 'Email required' });
                 }
 
-                userData.created_at = new Date().toISOString();
-                userData.last_loggedIn = new Date().toISOString();
+                const token = jwt.sign({ email: userData.email }, process.env.JWT_SECRET, {
+                    expiresIn: '7d',
+                });
+
                 const query = { email: userData.email };
                 const alreadyExists = await usersCollection.findOne(query);
 
-                // If user exists
                 if (alreadyExists) {
-                    const updateDoc = {
+                    let updateDoc = {
                         $set: {
                             last_loggedIn: new Date().toISOString(),
                             name: userData.name || alreadyExists.name,
-                            role: userData.role || alreadyExists.role,
                             photoURL: userData.photoURL || alreadyExists.photoURL,
                         }
                     };
-
-                    const result = await usersCollection.updateOne(query, updateDoc);
-                    return res.status(200).json({
-                        message: "User updated successfully",
-                        updated: true,
-                        result
-                    });
+                    await usersCollection.updateOne(query, updateDoc);
+                } else {
+                    userData.created_at = new Date().toISOString();
+                    userData.last_loggedIn = new Date().toISOString();
+                    await usersCollection.insertOne(userData);
                 }
 
-                const result = await usersCollection.insertOne(userData);
-                return res.status(201).json({
-                    message: "User created successfully",
-                    created: true,
-                    userId: result.insertedId
+                res.cookie('token', token, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                    maxAge: 7 * 24 * 60 * 60 * 1000
+                }).send({
+                    success: true,
+                    message: "Login & User sync successful"
                 });
 
             } catch (error) {
-                console.error("User Save Error:", error);
-                return res.status(500).json({
-                    message: "Internal Server Error",
-                    error: error.message
-                });
+                console.error(error);
+                res.status(500).send({ message: 'Internal Server Error' });
             }
+        });
+
+        app.post('/logout', (req, res) => {
+            res.clearCookie('token', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            }).send({ success: true });
         });
 
         // GET User  Get User
@@ -303,7 +298,7 @@ async function run() {
         });
 
         // GET Product by ID
-        app.get('/products/:id', verifyJWT, async (req, res) => {
+        app.get('/products/:id', async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -322,7 +317,7 @@ async function run() {
             }
         });
 
-        app.patch('/product/:id', verifyJWT, async (req, res) => {
+        app.patch('/product/:id', async (req, res) => {
             const id = req.params.id;
             const updatedData = req.body;
 
@@ -349,7 +344,7 @@ async function run() {
             }
         });
 
-        app.delete('/product/:id', verifyJWT, async (req, res) => {
+        app.delete('/product/:id', async (req, res) => {
             const id = req.params.id;
 
             try {
@@ -373,7 +368,7 @@ async function run() {
             }
         });
 
-        app.patch('/products/show-home/:id', verifyJWT, async (req, res) => {
+        app.patch('/products/show-home/:id', async (req, res) => {
             const id = req.params.id;
             const { showOnHome } = req.body;
 
@@ -396,7 +391,7 @@ async function run() {
         });
 
         // Post Orders
-        app.post('/orders', verifyJWT, async (req, res) => {
+        app.post('/orders', async (req, res) => {
             const orderData = req.body;
 
             if (!orderData || Object.keys(orderData).length === 0) {
@@ -444,7 +439,7 @@ async function run() {
         });
 
         // GET Orders status, email
-        app.get("/orders", verifyJWT, async (req, res) => {
+        app.get("/orders", async (req, res) => {
             try {
                 const { status, email } = req.query;
 
@@ -476,7 +471,7 @@ async function run() {
             }
         });
 
-        app.get('/order/:id', verifyJWT, async (req, res) => {
+        app.get('/order/:id', async (req, res) => {
             try {
                 const orderId = req.params.id;
 
@@ -502,7 +497,7 @@ async function run() {
         });
 
         // Delete Order by ID
-        app.delete('/order/:id', verifyJWT, async (req, res) => {
+        app.delete('/order/:id', async (req, res) => {
             try {
                 const orderId = req.params.id;
 
@@ -528,39 +523,34 @@ async function run() {
         });
 
         // UPDATE Order Status
-        app.patch("/orders/:id", verifyJWT, async (req, res) => {
+        app.patch("/orders/:id", async (req, res) => {
             const { id } = req.params;
-            const { status, tracking } = req.body;
-
-            if (!status && !tracking) {
-                return res.status(400).json({
-                    message: "Status or Tracking data is required"
-                });
-            }
+            const { status, tracking, coordinates } = req.body;
 
             try {
-                const updateDoc = {};
+                const updateDoc = { $set: {}, $push: {} };
 
-                //  Status update
                 if (status) {
-                    updateDoc.$set = {
-                        status
-                    };
-
+                    updateDoc.$set.status = status;
                     if (status === "Approved") {
                         updateDoc.$set.approvedAt = new Date();
                     }
                 }
 
-                //  Tracking update
+                if (coordinates) {
+                    updateDoc.$set.coordinates = coordinates;
+                    updateDoc.$set.location = tracking?.location; 
+                }
+
                 if (tracking) {
-                    updateDoc.$push = {
-                        trackingHistory: {
-                            ...tracking,
-                            time: new Date()
-                        }
+                    updateDoc.$push.trackingHistory = {
+                        ...tracking,
+                        time: new Date()
                     };
                 }
+
+                if (Object.keys(updateDoc.$set).length === 0) delete updateDoc.$set;
+                if (Object.keys(updateDoc.$push).length === 0) delete updateDoc.$push;
 
                 const result = await ordersCollection.updateOne(
                     { _id: new ObjectId(id) },
@@ -571,16 +561,10 @@ async function run() {
                     return res.status(404).json({ message: "Order not found" });
                 }
 
-                res.json({
-                    success: true,
-                    message: "Order updated successfully"
-                });
+                res.json({ success: true, message: "Order updated successfully" });
 
             } catch (error) {
-                res.status(500).json({
-                    message: "Failed to update order",
-                    error: error.message
-                });
+                res.status(500).json({ message: "Failed to update order", error: error.message });
             }
         });
 
