@@ -285,7 +285,6 @@ async function run() {
                 const products = await productsCollection
                     .find({ showOnHome: true })
                     .sort({ createdAt: -1 })
-                    .limit(8)
                     .toArray();
 
                 res.send(products);
