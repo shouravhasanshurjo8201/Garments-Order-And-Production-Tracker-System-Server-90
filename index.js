@@ -21,10 +21,6 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-
-
-
-
 //  VERIFY JWT
 const verifyJWT = (req, res, next) => {
     const token = req.cookies?.token;
@@ -43,7 +39,6 @@ const verifyJWT = (req, res, next) => {
         next();
     });
 };
-
 
 // MongoDB URI
 const uri = `mongodb+srv://${process.env.User_Name}:${process.env.MongoPassword}@cluster0.nivae1g.mongodb.net/?appName=Cluster0`;
@@ -538,7 +533,7 @@ async function run() {
 
                 if (coordinates) {
                     updateDoc.$set.coordinates = coordinates;
-                    updateDoc.$set.location = tracking?.location; 
+                    updateDoc.$set.location = tracking?.location;
                 }
 
                 if (tracking) {
