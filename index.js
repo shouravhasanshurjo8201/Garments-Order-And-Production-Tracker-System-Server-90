@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
@@ -39,7 +40,8 @@ const verifyJWT = (req, res, next) => {
         next();
     });
 };
-
+// Gemini AI Setup
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // MongoDB URI
 const uri = `mongodb+srv://${process.env.User_Name}:${process.env.MongoPassword}@cluster0.nivae1g.mongodb.net/?appName=Cluster0`;
 
@@ -64,6 +66,7 @@ async function run() {
         const productsCollection = db.collection("AllProducts");
         const usersCollection = db.collection("users");
         const ordersCollection = db.collection("Orders");
+        const knowledgeCollection = db.collection("KnowledgeBase");
         console.log("MongoDB connected successfully!");
 
         // Save  User
@@ -560,6 +563,76 @@ async function run() {
             } catch (error) {
                 res.status(500).json({ message: "Failed to update order", error: error.message });
             }
+        });
+
+        // --- AI CHATBOT ROUTES ---
+        app.post("/chat", async (req, res) => {
+            try {
+                const { message, history } = req.body;
+
+                if (!message || message.trim() === "") {
+                    return res.status(400).json({ error: "Message missing" });
+                }
+
+                const config = await knowledgeCollection.findOne({ type: "instruction" });
+                const systemPrompt = config?.content || "You are OnWay Support AI, a ride-sharing platform assistant.";
+
+                const knowledgeData = await knowledgeCollection
+                    .find({ $text: { $search: message } })
+                    .limit(3)
+                    .toArray();
+
+                const hasKnowledge = knowledgeData.length > 0;
+                const knowledgeText = hasKnowledge
+                    ? knowledgeData.map(k => `Q: ${k.question}\nA: ${k.answer}`).join("\n\n")
+                    : "No specific technical documentation found.";
+
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-1.5-flash",
+                    systemInstruction: systemPrompt
+                });
+
+                let cleanHistory = (history || []).filter(
+                    msg => msg.role === "user" || msg.role === "model"
+                );
+
+                const chat = model.startChat({ history: cleanHistory });
+
+                const finalMessage = `
+                ${hasKnowledge ? `Use this context: \n${knowledgeText}` : "Answer based on general knowledge."}
+                
+                User Question: ${message}
+                
+                Note: If unrelated to OnWay or ride-sharing, politely say you don't know.
+                `;
+
+                const result = await chat.sendMessage(finalMessage);
+                const reply = result.response.text();
+
+                res.json({ reply });
+
+            } catch (error) {
+                console.error("AI Error:", error);
+                res.status(500).json({ error: "AI Error", details: error.message });
+            }
+        });
+
+        app.post("/admin/ai-config", async (req, res) => {
+            const { content } = req.body;
+            if (!content) return res.status(400).json({ error: "Content required" });
+
+            await knowledgeCollection.updateOne(
+                { type: "instruction" },
+                { $set: { content, updatedAt: new Date() } },
+                { upsert: true }
+            );
+            res.json({ success: true });
+        });
+
+        app.post("/admin/add-knowledge", async (req, res) => {
+            const { question, answer } = req.body;
+            const result = await knowledgeCollection.insertOne({ question, answer, type: "qa" });
+            res.json({ success: true, id: result.insertedId });
         });
 
     } catch (err) {
