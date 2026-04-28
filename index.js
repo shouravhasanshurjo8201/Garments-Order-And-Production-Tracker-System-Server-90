@@ -13,7 +13,8 @@ app.set('trust proxy', 1);
 app.use(cors({
     origin: [
         'http://localhost:5173',
-        process.env.Origin
+        'https://garments-production-tracker-system-69.netlify.app',
+        'https://garments-production-tracker-system-92.netlify.app'
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
@@ -575,7 +576,7 @@ async function run() {
                 }
 
                 const config = await knowledgeCollection.findOne({ type: "instruction" });
-                const systemPrompt = config?.content || "You are OnWay Support AI, a ride-sharing platform assistant.";
+                const systemPrompt = config?.content || "You are an expert assistant for the Garments Production Tracker System.";
 
                 const knowledgeData = await knowledgeCollection
                     .find({ $text: { $search: message } })
@@ -603,7 +604,7 @@ async function run() {
                 
                 User Question: ${message}
                 
-                Note: If unrelated to OnWay or ride-sharing, politely say you don't know.
+                Provide a clear and concise answer. If you don't know, say you don't know.
                 `;
 
                 const result = await chat.sendMessage(finalMessage);
