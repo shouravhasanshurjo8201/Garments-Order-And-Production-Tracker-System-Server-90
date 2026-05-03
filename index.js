@@ -578,7 +578,6 @@ async function run() {
                 const config = await knowledgeCollection.findOne({ type: "instruction" });
                 const systemPrompt = config?.content || "You are an expert assistant for the Garments Production Tracker System.";
 
-                // ✅ FIX 5: Safely handle text search — fallback to regex if text index missing
                 let knowledgeData = [];
                 try {
                     knowledgeData = await knowledgeCollection
@@ -605,24 +604,20 @@ async function run() {
                     : "No specific technical documentation found.";
 
                 const model = genAI.getGenerativeModel({
-                    model: "gemini-2.0-flash",
+                    model: "models/gemini-2.5-flash",
                     systemInstruction: systemPrompt
                 });
 
-                // ✅ FIX 6: Strictly validate history — only "user" and "model" roles allowed
-                // Also ensure history alternates properly (Gemini requires user→model→user→model...)
                 const rawHistory = Array.isArray(history) ? history : [];
                 const cleanHistory = rawHistory
                     .filter(msg => msg.role === "user" || msg.role === "model")
                     .filter(msg => msg.parts && msg.parts[0]?.text?.trim() !== "");
 
-                // ✅ FIX 7: Gemini requires history to start with "user" turn
                 // Remove leading "model" messages if any
                 while (cleanHistory.length > 0 && cleanHistory[0].role !== "user") {
                     cleanHistory.shift();
                 }
 
-                // ✅ FIX 8: Gemini requires alternating roles — remove consecutive same roles
                 const validHistory = [];
                 for (const msg of cleanHistory) {
                     if (validHistory.length === 0 || validHistory[validHistory.length - 1].role !== msg.role) {
@@ -633,11 +628,11 @@ async function run() {
                 const chat = model.startChat({ history: validHistory });
 
                 const finalMessage = `
-${hasKnowledge ? `Use this context:\n${knowledgeText}` : "Answer based on general knowledge."}
+                    ${hasKnowledge ? `Use this context:\n${knowledgeText}` : "Answer based on general knowledge."}
 
-User Question: ${message}
+                    User Question: ${message}
 
-Provide a clear and concise answer. If you don't know, say you don't know.
+                    Provide a clear and concise answer. If you don't know, say you don't know.
                 `.trim();
 
                 const result = await chat.sendMessage(finalMessage);
