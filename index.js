@@ -646,6 +646,43 @@ async function run() {
             }
         });
 
+        // --- AI JOB DESCRIPTION GENERATOR ROUTE ---
+        app.post("/generate-job-description", async (req, res) => {
+            try {
+                const { jobTitle, department, skills, experience, jobType } = req.body;
+
+                if (!jobTitle || !skills) {
+                    return res.status(400).json({ error: "Job Title and Skills are required" });
+                }
+
+                const prompt = `
+                    Create a professional, highly engaging, and well-structured Job Description based on the following details:
+                    - Job Title: ${jobTitle}
+                    - Department/Industry: ${department || 'Not specified'}
+                    - Required Skills: ${skills}
+                    - Experience Required: ${experience || 'Not specified'}
+                    - Job Type: ${jobType} (e.g., Full-time, Remote, Hybrid)
+                    
+                    The output must include these sections structured beautifully:
+                    1. Job Summary
+                    2. Core Responsibilities (using bullet points)
+                    3. Requirements & Skills (using bullet points)
+                    4. Benefits & Perks (generic professional ones)
+                    
+                    Format the output using clear markdown headers.
+                `.trim();
+
+                const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const result = await model.generateContent(prompt);
+                const description = result.response.text();
+                res.status(200).json({ success: true, description });
+
+            } catch (error) {
+                console.error("Job Description Generation Error:", error);
+                res.status(500).json({ success: false, error: "AI Generation Failed", details: error.message });
+            }
+        });
+
         app.post("/admin/ai-config", async (req, res) => {
             const { content } = req.body;
             if (!content) return res.status(400).json({ error: "Content required" });
