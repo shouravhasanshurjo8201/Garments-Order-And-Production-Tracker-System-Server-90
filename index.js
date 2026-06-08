@@ -618,6 +618,58 @@ async function run() {
             }
         });
 
+        // AI PRODUCTION RISK ANALYSIS (Protected)
+        app.post('/api/ai-risk-analysis', verifyJWT, async (req, res) => {
+            try {
+                const { productId } = req.body;
+                if (!productId || !ObjectId.isValid(productId)) {
+                    return res.status(400).json({ error: "Valid Product ID is required" });
+                }
+
+                const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
+                if (!product) return res.status(404).json({ error: "Product not found" });
+
+                const orders = await ordersCollection.find({ productId: new ObjectId(productId) }).toArray();
+
+                const prompt = `
+                    You are an expert AI Production Risk Analyst for a Garments Manufacturing System.
+                    Analyze the following real-time data and provide a concise risk assessment:
+                    
+                    Product Details:
+                    - Name: ${product.name}
+                    - Current Stock/Quantity: ${product.quantity} Pcs
+                    - Category: ${product.category || 'Garments'}
+                    
+                    Order History Context:
+                    - Total Orders Placed: ${orders.length}
+                    - Orders Data: ${JSON.stringify(orders.map(o => ({ qtn: o.quantity, status: o.status })))}
+            
+                    Please generate a JSON response strictly matching this schema:
+                    {
+                    "riskLevel": "Low" | "Medium" | "High",
+                    "materialRisk": "Brief analysis of stock availability vs demand.",
+                    "timelineRisk": "Brief analysis of potential shipment delays based on pending orders.",
+                    "recommendation": "One actionable step to mitigate the risk."
+                    }
+                    Do not include any markdown formatting or extra text outside the JSON.
+                `.trim();
+
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-2.5-flash",
+                    generationConfig: { responseMimeType: "application/json" }
+                });
+
+                const result = await model.generateContent(prompt);
+                const analysisResult = JSON.parse(result.response.text());
+
+                res.status(200).json({ success: true, analysis: analysisResult });
+
+            } catch (error) {
+                console.error("AI Risk Analysis Error:", error);
+                res.status(500).json({ error: "Failed to analyze production risk", details: error.message });
+            }
+        });
+
         // ADMIN — AI CONFIG & KNOWLEDGE BASE (Admin Protected - Fixed)
 
         // POST - Update AI System Prompt
